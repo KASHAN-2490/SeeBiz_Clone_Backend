@@ -13,6 +13,7 @@ const PORT = process.env.PORT;
 const cors = require('cors');
 
 const app = express();
+var socket = require('socket.io')
 
 require("./database/db.js");
 
@@ -25,21 +26,27 @@ app.use(express.json())
 app.use(cors())
 
 
-
+// var name;
 
 app.post("/", async (req, res) => {
 
     // res.send('<h1>hello this is home</h1>');
 
     const email = req.body.Email;
-    console.log(email);
+    // console.log(email);
 
     try {
         const userExist = await Register.findOne({ email: email })
 
+        // if (userExist) {
+        //     // console.log(userExist);
+        //     return name = userExist.username;
+        // }
+
         if (userExist) {
             // console.log(userExist);
             return res.status(201).json({ name: userExist.username })
+
         } else {
             return res.status(422).json({ errmsg: "User credentials are not valid" })
         }
@@ -63,12 +70,18 @@ app.post("/signin", async (req, res) => {
     try {
         const userExist = await Register.findOne({ email: email })
 
+        // if (userExist) {
+        //     io.emit("message", { msg: `You are Signed In ${userExist.username}`, count: 1 });
+        //     setTimeout(function () {
+        //         io.emit("testerEvent", { msg: `Welcome ${userExist.username}`, count: 1 });
+        //     }, 4000);
+        // }
 
         if (userExist) {
 
             const passExist = await bcrypt.compare(password, userExist.password);
 
-            let mytoken = jwt.sign({_id: userExist._id}, process.env.SECRET_KEY);
+            let mytoken = jwt.sign({ _id: userExist._id }, process.env.SECRET_KEY);
 
             // const mytoken = await userExist.generateAuthToken();
             // console.log(token);
@@ -136,6 +149,68 @@ app.get("*", (req, res) => {
     res.send('<h1 style="text-align:center">404, Oops Page not found</h1>');
 })
 
-app.listen(7000, () => {
+const server = app.listen(PORT, () => {
     console.log(`listning the port at ${PORT}`);
 })
+
+const io = socket(server, {
+    cors: {
+        origin: "*",
+    }
+})
+ 
+let users = []
+
+
+const addUsers = (socketId, username) => {
+    !users.some((user) =>
+        user.username === username
+    )
+        &&
+    users.push({socketId, username});
+} 
+
+const removeUser = (socketId) => {
+    users = users.filter((users)=>
+        users.socketId !== socketId
+    ) 
+}
+
+const findUser = (sendername) => {
+      return users.find((user)=>
+          user.username !== sendername
+       )
+}
+
+io.on('connection', function (socket) {
+    console.log('A user connected');
+
+    socket.on('newUser', function(username){
+        addUsers(socket.id, username)
+    });
+
+    // io.emit("message1", users);
+    console.log("users ", users);
+
+    // io.emit("users", users);
+
+    socket.on('clientEvent', function({sendername, usermsg}){
+        const name = findUser(sendername)
+        console.log("name ", sendername); 
+
+        io.to(name.socketId).emit("message", { msg: usermsg, count: 1 })
+    });
+
+
+    socket.on('disconnect', function () {
+        console.log('A user disconnected');
+        removeUser(socket.id);
+    });
+});
+
+
+
+  // !users.some((user)=>
+    //       user.username === username
+    // ) 
+    // && 
